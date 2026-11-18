@@ -1,0 +1,9 @@
+.env
+config.yaml
+state.json
+logs/
+debug/
+discovery/
+.venv/
+__pycache__/
+*.zip

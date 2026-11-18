@@ -1,0 +1,5 @@
+playwright>=1.47
+requests>=2.32
+PyYAML>=6.0
+python-dotenv>=1.0
+plyer>=2.1        # optional: desktop notifications

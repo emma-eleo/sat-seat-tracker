@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------------------
+# SAT Seat Tracker configuration (EXAMPLE)
+# Copy this file to config.yaml and edit it. config.yaml is git-ignored.
+# Update `dates` to dates actually offered on the site's date dropdown.
+# ---------------------------------------------------------------------------
+url: https://satsuite.collegeboard.org/sat/test-center-search
+region: "Outside the United States"
+country: "Mongolia"   # any country name exactly as listed in the site's dropdown
+
+# `label` is matched case-insensitively against what the site shows.
+# Use "|" to list alternative spellings (the dropdown format is unknown until you look).
+dates:
+  - id: "2026-11-07"
+    label: "November 7, 2026|Nov 7, 2026|Nov. 7, 2026|Nov 07, 2026|11/07/2026"
+  - id: "2026-12-05"
+    label: "December 5, 2026|Dec 5, 2026|Dec. 5, 2026|Dec 05, 2026|12/05/2026"
+
+poll:
+  min_minutes: 10               # next check is a random time between min and max. The program refuses min_minutes < 5.
+  max_minutes: 15
+  between_dates_seconds: [8, 25]  # random pause between the two date checks
+  page_timeout_ms: 45000
+  max_retries: 3                # per date, per cycle
+  retry_backoff_seconds: 30     # multiplied by attempt number, with jitter
+  blocked_backoff_minutes: 60   # pause after a captcha / "access denied" page
+
+alerts:
+  realert_minutes: 120          # repeat an alert if seats are still there after this long
+  unhealthy_after_failures: 3   # consecutive failed cycles before a "tracker is broken" ping
+
+browser:
+  headless: true
+  channel: null                 # set to "chrome" to use your installed Google Chrome
+  locale: "en-US"
+  timezone: null                # e.g. "America/New_York"; null = this computer's timezone
+  block_resources: ["image", "media", "font"]  # not needed for the seat counter; saves data
+  recycle_every_cycles: 24     # restart the browser session after this many checks (memory hygiene)
+
+# ---------------------------------------------------------------------------
+# STEPS: how to drive the search form.
+# The page renders its form with JavaScript, so these are a TEMPLATE you must
+# calibrate once (see README: `python -m sat_tracker discover` or
+# `playwright codegen <url>`). Placeholders: {date_label} {date_id} {country} {region}
+#
+# Locators (use one per step): label | placeholder | role + name | text | css
+# Actions:
+#   click      click the element
+#   fill       type `value` into an input
+#   select     pick `value` in a native <select>
+#   choose     click a custom dropdown, optionally `type` text, then click the option `value`
+#   wait_text  wait until `text` appears
+#   wait       sleep `ms`
+# ---------------------------------------------------------------------------
+steps:
+  # Cookie banner (OneTrust). Rejects non-essential cookies. `optional: true` = skipped
+  # silently if the banner never shows; `timeout_ms` = how long to wait for it to appear.
+  - {action: click, css: "#onetrust-reject-all-handler", optional: true, timeout_ms: 10000, once_per_session: true}
+  - {action: wait, ms: 1200}   # let the banner finish fading out before touching the form
+  # 1. Testing country or region (radio)
+  - {action: click, text: "{region}"}
+  # 2. Test date: native <select name="adminDate"> hidden behind a styled widget
+  - {action: select, css: "select[name='adminDate']", value: "{date_label}"}
+  # 3. Country or region: native <select name="countries">
+  - {action: select, css: "select[name='countries']", value: "{country}"}
+  - {action: click, role: button, name: "Find a Test Center"}
+  # Results page wording is unverified. If this times out, send me debug/*.png and *.txt.
+  - {action: wait_text, text: "with available seats|no test centers"}
+
+# ---------------------------------------------------------------------------
+# RESULTS: how to read the page after the search.
+# ---------------------------------------------------------------------------
+results:
+  # The page shows: "Test centers with available seats (0)". Group 1 = the number.
+  # If the site changes wording, this will fail loudly (an error alert), never report a false 0.
+  count_regexes:
+    - 'test centers?\s+with\s+available\s+seats\s*\(\s*(\d+)\s*\)'
+  # If no counter is found but one of these matches, treat it as 0 seats.
+  zero_regexes:
+    - 'no test centers? (are )?(available|found)'
+  # One result card (each center). Used to list names/addresses when seats exist.
+  center_card_selector: "article.sat-tc-card"
+  # Cards whose "seat-availability" text matches this are skipped. The site shows "No Seats Available".
+  unavailable_regex: 'no seats|sold out|\bunavailable\b|waitlist|\bfull\b'
+  max_pages: 5
